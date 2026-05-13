@@ -1,0 +1,49 @@
+FROM vault.habana.ai/gaudi-docker/1.23.0/ubuntu24.04/habanalabs/pytorch-installer-2.9.0:latest
+
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+
+WORKDIR /app
+
+# Copy build-time variables
+COPY build-vars.sh /app/build-vars.sh
+
+# Install system packages
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y tesseract-ocr && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install python dependencies
+RUN pip install openai gradio
+
+# Clone and build vllm and vllm-gaudi using variables from build-vars.sh
+RUN /bin/bash -c "source /app/build-vars.sh && \
+    git clone https://github.com/vllm-project/vllm-gaudi /app/vllm-gaudi && \
+    cd /app/vllm-gaudi && \
+    git checkout \${VLLM_GAUDI_COMMIT_HASH:-main} && \
+    \
+    git clone https://github.com/vllm-project/vllm /app/vllm && \
+    cd /app/vllm && \
+    if [ -z \"\$VLLM_COMMIT_HASH\" ]; then \
+        VLLM_COMMIT_HASH=\$(git -C /app/vllm-gaudi show \"origin/vllm/last-good-commit-for-vllm-gaudi:VLLM_STABLE_COMMIT\" 2>/dev/null); \
+    fi && \
+    if [ -z \"\$VLLM_COMMIT_HASH\" ]; then \
+        echo \"Failed to determine VLLM_COMMIT_HASH. Set VLLM_COMMIT_HASH explicitly or ensure origin/vllm/last-good-commit-for-vllm-gaudi:VLLM_STABLE_COMMIT is available.\" >&2; \
+        exit 1; \
+    fi && \
+    git checkout \$VLLM_COMMIT_HASH && \
+    sed '/^torch/d' requirements/build.txt > /tmp/build_reqs.txt && \
+    pip install -r /tmp/build_reqs.txt && \
+    VLLM_TARGET_DEVICE=empty pip install --no-build-isolation -e . && \
+    \
+    cd /app/vllm-gaudi && pip install -e ."
+
+# Copy chat template
+COPY chat_template.jinja /app/chat_template.jinja
+
+ARG VLLM_PORT=8001
+ENV VLLM_PORT=${VLLM_PORT}
+
+# Keep the exposed port aligned with the port used by the API server.
+EXPOSE ${VLLM_PORT}
+
+CMD ["bash", "-c", "cd /app/vllm && VLLM_SKIP_WARMUP=true python -m vllm.entrypoints.openai.api_server --model $MODEL --max_model_len 99200 --tensor-parallel-size 8 --host $VLLM_HOST --port $VLLM_PORT --limit-mm-per-prompt '{\"image\":6}' --enable-auto-tool-choice --tool-call-parser hermes --chat-template /app/chat_template.jinja"]
