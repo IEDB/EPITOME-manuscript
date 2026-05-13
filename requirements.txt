@@ -1,0 +1,10 @@
+# base dependencies
+openai
+langchain-community
+gradio
+docling
+
+# Pepmatch agent dependencies
+langgraph
+langchain-openai
+pepmatch

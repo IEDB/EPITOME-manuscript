@@ -1,0 +1,377 @@
+peptide_query:
+  instruction: |
+      Examine this figure from an immunology paper, and identify any peptide linear sequences shown using standard one-letter amino acid codes (e.g., R, G, D, A, etc.). The sequences are presented as combinations of these amino acid codes, often appearing like 'GRDSPLLY'. The sequence may be a part of a label, caption, 
+      annotation or embedded within a molecular diagram. Respond only with a list of all identified sequences (e.g., ['GRDARDGA', 'YSLDYLLL']), otherwise if no linear sequence found, just generate 'None'.
+hla_query:
+  instruction: |
+      Examine this figure from an immunology paper, and identify any MHC (Major Histocompatibility Complex) molecule names. This could be MHC class I or MHC class II,
+      or it could be a group like HLA-A, HLA-A2, HLA-B7, or HLA-DR4 (humans) or "H-2ᵇ" or  H-2ᵏ with the superscript in mice. Or, it could be the gene or allele, which might look like : HLA-DRB3*02:87,
+      H2-IEg7 in mice, Paan-A*28:01, Mafa-B*019:03:01:01. Sometimes HLA- or H2 is missing, or old notations are used like HLA-A2.1.
+      Respond only with a list of all identified MHC molecules (e.g., ['HLA-A2', 'HLA-B40*01']), otherwise if no MHC molecule name found, just generate 'None'.
+object_type:
+  instruction: |
+      Assign the peptide’s object type based on what the authors say. If the peptide is a sequence that exists in a natural protein, assign 'Peptide from protein'.  
+      if the peptide comes from an engineered protein or is a mutated version of a natural peptide (e.g. such as in the case of neoepitopes in the context of cancer), return 'Peptide, no natural source'. 
+      You must return only 'Peptide from protein' or 'Peptide, no natural source', exactly. Do not provide your reasoning.
+      Peptide from protein - Peptide exists in a natural protein.
+      Peptide, no natural source - Synthetic or mutated form of another peptide. Common cues: mutant, WT.
+      '''Allowed values'''
+      Peptide from protein
+      Peptide, no natural source
+      '''Example output'''
+      "Peptide from protein"
+  allowed_values:
+    - Peptide from protein
+    - Peptide, no natural source
+  instruction_updated: |
+      Assign the peptide’s object type based on what the authors say. If the peptide is a sequence that exists in a natural protein, assign 'Peptide from protein'.  
+      if the peptide comes from an engineered protein or is a mutated version of a natural peptide (e.g. such as in the case of neoepitopes in the context of cancer), return 'Peptide, no natural source'. 
+      You must return only 'Peptide from protein' or 'Peptide, no natural source', exactly. Do not provide your reasoning.
+      Peptide from protein - Peptide exists in a natural protein.
+      Peptide, no natural source - Synthetic or mutated form of peptide. 
+      '''Allowed values'''
+      Peptide from protein
+      Peptide, no natural source
+      '''Example output'''
+      "Peptide from protein"
+  instruction_old: |
+      Assign the peptide’s object type based on what the authors say. If the peptide comes from a natural protein, assign 'Peptide from protein'. Otherwise, 
+      if the peptide comes from an engineered protein or is a mutated version of another peptide (e.g. a mutant of a natural peptide, which may also be in the paper, such as in the case of neoepitopes in the context of cancer), return 'Peptide, no natural source'. You must return only 'Peptide from protein' or 'Peptide, no natural source', exactly. Do not provide your reasoning.
+      '''Allowed values'''
+      Peptide from protein
+      Peptide, no natural source
+      '''Example output'''
+      "Peptide from protein"
+epitope_structure_defines:
+  instruction: | 
+      Define how the epitope structure is defined, as either 'Exact Epitope' or 'Epitope Containing Region/Antigenic Site'.
+      The choices are:
+      'Exact Epitope': For MHC Class I epitopes, if the sequence is 11 residues or less in length (with a minimum of 7 aa for class I epitopes), the epitope should be designated as an Exact Epitope. For linear MHC Class II epitopes, select Exact Epitope if the sequence is 15 residues or less in length. Or, 
+      'Epitope Containing Region/Antigenic Site': For MHC Class I epitopes, if the sequence is 12 residues or greater, Epitope Containing Region/Antigenic Site should be selected. For linear Class II epitopes, select Epitope Containing Region/Antigenic Site if the epitope sequence is 16 residues or greater in length.
+      Based on your findings, respond only with either 'Exact Epitope' or 'Epitope containing region/antigenic site'. If a peptide is tested with both Class I and class II, use the Class I rules. Do not provide your reasoning.
+      '''Allowed values'''
+      Exact Epitope
+      Epitope containing region/antigenic site
+      '''Example output'''
+      "Exact Epitope"
+  allowed_values:
+    - Exact Epitope
+    - Epitope Containing Region
+mhc_allele_name:
+  instruction: |
+    Assign the MHC Allele(s) which present this peptide in the assays reported. 
+    This could be MHC class I or MHC class II, or it could be a group like HLA-A, HLA-A2, HLA-B7, or HLA-DR4 (humans) or "H-2ᵇ" or  H-2ᵏ with the superscript in mice. Or, it could be the gene or allele, which might look like : HLA-DRB3*02:87,
+    H2-IEg7 in mice, Paan-A*28:01, Mafa-B*019:03:01. Sometimes HLA- or H2 is missing, or old notations are used like HLA-A2.1.
+    Based on your findings, respond only with a list of alleles e.g. ["HLA-A*01:01", "H-2D^b"]. If you do not find any, respond only with None. Do not provide your reasoning, respond only with a List or None.
+    '''Example outputs'''
+    ["HLA-A*01:01", "H-2D^b"]
+    ["HLA-A2.1"]
+structural_assay:
+  instruction: |
+    Report whether a 3D structural assay is conducted using this peptide and MHC molecule. This can be inferred from 3D molecular visualisations, the presence of references to the Protein Databank (PDB), and 4-letter identifiers. Based on your findings, respond with "True" if a 3D assay is reported for this peptide-MHC, otherwise, return "False". Return only "True" or "False". Do not provide your reasoning.
+    '''Allowed values'''
+    True
+    False
+    '''Example outputs'''
+    False
+organism_id:
+  instruction: | 
+    Report the species of the protein that this peptide comes from. From your findings, report only a binomial species name, e.g. "'Homo sapiens'" or "'Clostridium tetani'". If the peptide comes from a viral protein, return all the information provided, e.g. "'Yellow fever virus'" or "'Influenza A virus (A/Victoria/3/1975(H3N2))'". Return only a species name or "None". Do not provide your reasoning.
+    '''Example outputs'''
+    "Mus musculus"
+    "Human"
+    "SARS-CoV-2"
+assay_response:
+  instruction: |
+    Please identify whether the figure presents an experimental assay result.
+    If yes, extract the assay response type and any associated unit. There can be many assay responses 
+    in one table or figure, so please state all of them and their associated units. 
+    If not, state "No assay information present." Please only respond with one of the  
+    assay responses from the following list.
+
+    Use this list of possible assay response types as reference categories.
+    For each, common phrases or textual cues are provided to help identify the assay response.
+    ---
+    Assay Response Categories with Cues
+    ---
+    3DSTRUCTURE
+    3D Structure
+    Units: Å (angstroms)
+    Common cues:
+    - crystal structure, X-ray crystallography, Cryo-EM, atomic resolution, model, PDB, RMSD, structure overlay, coordinates
+
+    DISSOC_TEMP
+    50% dissociation temperature (Tm)
+    Units: Å°C, °C (temperature)
+    Common cues:
+    - melting temperature, thermal denaturation, thermal stability, Tm, temperature midpoint, DSF, thermal shift assay
+
+    OFFRATE
+    Off-rate
+    Units: s^-1 (1 / time)
+    Common cues:
+    - off-rate, dissociation rate, koff, SPR off-rate, Biacore off-rate
+    
+    ONRATE
+    On-rate
+    Units: M⁻¹s⁻¹, nM⁻¹s (1 / (concentration × time))
+    Common cues:
+    - on-rate, association rate, kon, SPR on-rate, Biacore on-rate
+
+    ASSOCIATION_CONSTANT
+    Association constant (KA)
+    Units: 1/M, M⁻¹ (1/concentration)
+    Common cues:
+    - association constant, binding affinity (KA), association rate
+
+    BINDING_CONSTANT
+    Binding constant (general)
+    Units: dimensionless or without units
+    Common cues:
+    - binding constant, affinity constant, binding strength, affinity value, equilibrium binding
+
+    DISSOCIATION_CONSTANT
+    Dissociation constant KD
+    Units: nM, µM, M (concentration)
+    Common cues:
+    - dissociation constant, KD, binding affinity, equilibrium dissociation, SPR KD, ITC KD
+
+    DISSOCIATION_CONSTANT_EC50
+    Dissociation constant KD ~EC50
+    Units: nM, µM, M (concentration)
+    Common cues:
+    - KD approximated from EC50, apparent KD, functional affinity, binding curve derived EC50, KD-like EC50
+
+    DISSOCIATION_CONSTANT_IC50
+    Dissociation constant KD ~IC50
+    Units: nM, µM, M (concentration)
+    Common cues:
+    - KD approximated from IC50, apparent KD, functional inhibition constant, binding inhibition curve, KD-like IC50
+
+    HALFLIFE
+    Half-life (T½)
+    Units: s, min, h (time)
+    Common cues:
+    - t½, half-life, decay rate, clearance time, elimination half-life, time constant, kinetic stability
+
+    EC50
+    Half maximal effective concentration (EC50)
+    Units: nM, µM (concentration)
+    Common cues:
+    - EC50, half maximal response, dose–response, effective concentration, agonist potency, activation curve, sigmoidal fit
+
+    IC50
+    Half maximal inhibitory concentration (IC50)
+    Units: nM, µM (concentration)
+    Common cues:
+    - IC50, inhibition curve, half maximal inhibition, inhibitory concentration, neutralization titer, blocking potency
+
+    QUALITATIVE
+    Qualitative binding
+    Units: none (textual only)
+    Common cues:
+    - positive/negative binding, strong/weak/no binding, detected/not detected, reactive/non-reactive, binding observed/not observed
+
+    If none of the previous choices are found, respond with None in all required fields (AssayResponse, Unit, Justification). The output format is described below.
+    Allowed "AssayResponse" values are: 3DSTRUCTURE, DISSOC_TEMP, ASSOCIATION_CONSTANT, BINDING_CONSTANT, DISSOCIATION_CONSTANT, DISSOCIATION_CONSTANT_IC50, DISSOCIATION_CONSTANT_EC50, QUALITATIVE
+    HALFLIFE, OFFRATE, ONRATE, IC50, EC50 or None.
+    ---
+    Output format
+    ---
+    [{
+      "AssayResponse": "IC50",
+      "Unit": "nM",
+      "Justification": "Table caption includes 'IC50 (nM)' under 'Inhibition assay' heading"
+    },
+    {
+      "AssayResponse": "3DSTRUCTURE",
+      "Unit": "nM",
+      "Justification": "Image of 3D structure."
+    }]
+    """
+  allowed_values:
+    3DSTRUCTURE
+    DISSOC_TEMP
+    ASSOCIATION_CONSTANT
+    BINDING_CONSTANT
+    DISSOCIATION_CONSTANT
+    DISSOCIATION_CONSTANT_IC50
+    DISSOCIATION_CONSTANT_EC50
+    QUALITATIVE
+    HALFLIFE
+    OFFRATE
+    ONRATE
+    IC50
+    EC50
+  mapping:
+    3DSTRUCTURE: 3D structure
+    ASSOCIATION_CONSTANT: association constant KA
+    DISSOCIATION_CONSTANT: dissociation constant KD
+    DISSOCIATION_CONSTANT_EC50: dissociation constant KD (~EC50)
+    DISSOCIATION_CONSTANT_IC50: dissociation constant KD (~IC50)
+    EC50: half maximal effective concentration (EC50)
+    IC50: half maximal inhibitory concentration (IC50)
+    HALFLIFE: half life
+    OFFRATE: off rate
+    ONRATE: on rate
+    QUALITATIVE: qualitative binding
+    BINDING_CONSTANT: binding constant
+    DISSOC_TEMP: 50% dissociation temperature
+assay_type_3D:
+  instruction: |
+    Please identify the most appropriate 3D structural assay type. Only choose from the official list below. 
+    If more than  one type could apply, choose the single best match based on the description.
+    Return as a dictionary with assay type corresponding to key 'AssayType', and reasoning in 'AssayTypeJustification'.
+    Allowed assay types:
+    1. X-ray crystallography
+    Common cues: resolution, B-factor, occupancy, crystallization, ångstrom
+    2. electron microscopy
+    Common cues: cryo-EM, tomography, density map, single-particle analysis
+    '''Example output'''
+    {'AssayType': 'X-ray crystallography', 'AssayTypeJustification':'The paper mentions crystallisation via the vapour drop method.'}
+    ''''
+assay_type:
+  instruction: |
+      Please identify the most appropriate MHC binding assay type. Only 
+      choose from the official list provided according to the response type. Use the given response, units, and visual context to 
+      guide your reasoning, but do not invent new assay types or modify the names. 
+      A key difference between assays is the use of fluorescence OR radioactivity. Fluorescence keywords include fluorescein, fluorescence and MFI. 
+      Radioactivity assays will include radiolabelling.
+      The second key difference is whether the MHC is in the form of MHC lysate (lysate from cells, often EBV-transformed), purified MHC (MHC molecules purified from cell lysate using e.g. immunoaffinity columns) or cellular MHC (cells used directly, often with stabilized MHC molecules).
+      For fluorescence or radioactivity assays, binding is either measured via competition (using the reduction in binding of a reference ligand in the presence of the ligand of interest) or directly. This is referred to as "competition" or "direct".
+      Other assays utilize T cell recognition (t-cell inhibition) or phage display.
+      Return as a dictionary with assay type corresponding to key 'AssayType', and reasoning in 'AssayTypeJustification'.
+      '''Example output'''
+      {'AssayType': 'cellular MHC/direct/fluorescence', 'AssayTypeJustification': 'Fluorophores are mentioned in the text. Whole cells are used without lysis or purification.'}
+      ''''
+      Only choose AssayTypes in the list."""
+  descriptions:
+    ASSOCIATION_CONSTANT:
+      - cellular MHC/direct/fluorescence - A fluorescence detection assay that measures equilibrium association constant (KA) to detect the direct binding of a cell-bound-MHC molecule with a ligand.
+      - binding assay - A MHC binding constant determination assay measuring equilibrium association constant (KA).
+    DISSOCIATION_CONSTANT:
+      - cellular MHC/competitive/fluorescence - A fluorescence detection assay that measures equilibrium dissociation constant (KD) to detect the loss of binding of a known reference ligand to cell-bound-MHC due to competition by the ligand under investigation.
+      - cellular MHC/competitive/radioactivity - A radioactivity detection assay that measures equilibrium dissociation constant (KD) to detect the loss of binding of a known reference ligand to cell-bound-MHC due to competition by the ligand under investigation.
+      - lysate MHC/competitive/radioactivity - A radioactivity detection assay that measures equilibrium dissociation constant (KD) to detect the loss of binding of a known reference ligand to cell-lysate-MHC due to competition by the ligand under investigation.
+      - purified MHC/competitive/fluorescence - A fluorescence detection assay that measures equilibrium dissociation constant (KD) to detect the loss of binding of a known reference ligand to purified-MHC due to competition by the ligand under investigation.
+      - purified MHC/competitive/radioactivity - A radioactivity detection assay that measures equilibrium dissociation constant (KD) to detect the loss of binding of a known reference ligand to purified-MHC due to competition by the ligand under investigation.
+      - binding assay - A MHC binding constant determination assay measuring equilibrium dissociation constant (KD).
+    DISSOCIATION_CONSTANT_IC50:
+      - purified MHC/competitive/radioactivity - A radioactivity detection assay that measures equilibrium dissociation constant (KD) to detect the loss of binding of a known reference ligand to purified-MHC due to competition by the ligand under investigation and provides IC50 values determined under assay conditions where the IC50 approximates a KD value.
+      - purified MHC/competitive/fluorescence - A fluorescence detection assay that measures equilibrium dissociation constant (KD) to detect the loss of binding of a known reference ligand to purified-MHC due to competition by the ligand under investigation and provides IC50 values determined under assay conditions where the IC50 approximates a KD value.
+    DISSOCIATION_CONSTANT_EC50:
+      - purified MHC/direct/fluorescence - A fluorescence detection assay that measures equilibrium dissociation constant (KD) to detect direct binding of a purified-MHC molecule with a ligand and provides EC50 values determined under assay conditions where the EC50 approximates a KD value.
+    HALFLIFE:
+      - lysate MHC/direct/radioactivity - A radioactivity detection assay that measures half life to detect the direct binding of a cell-lysate-MHC molecule with a ligand.
+      - purified MHC/direct/fluorescence - A fluorescence detection assay that measures half life to detect the direct binding of a purified-MHC molecule with a ligand.
+      - cellular MHC/direct/fluorescence - A fluorescence detection assay that measures half life to detect the direct binding of a cell-bound-MHC molecule with a ligand.
+      - cellular MHC/direct/radioactivity - A radioactivity detection assay that measures half life to detect the direct binding of a cell-bound-MHC molecule with a ligand
+      - purified MHC/direct/radioactivity - A radioactivity detection assay that measures half life to detect the direct binding of a purified-MHC molecule with a ligand
+      - binding assay - A MHC binding constant determination assay measuring half life of binding.
+    OFFRATE:
+      - cellular MHC/direct/fluorescence - A fluorescence detection assay that measures binding off rate [koff] to detect direct binding of a cell-bound-MHC molecule with a ligand.
+      - lysate MHC/direct/radioactivity - A radioactivity detection assay that measures binding off rate [koff] to detect direct binding of a cell-lysate-MHC molecule with a ligand.
+      - purified MHC/direct/fluorescence - A fluorescence detection assay that measures binding off rate [koff] to detect direct binding of a purified-MHC molecule with a ligand.
+      - binding assay - A MHC binding constant determination assay measuring binding off rate measurement data item (koff)
+    ONRATE:
+      - cellular MHC/direct/fluorescence - A fluorescence detection assay that measures binding on rate (kon) to detect direct binding of a cell-bound-MHC molecule with a ligand.
+      - purified MHC/direct/fluorescence - A fluorescence detection assay measuring binding on rate (kon) to detect direct binding of a purified-MHC:ligand complex.
+      - binding assay - A MHC binding constant determination assay measuring binding on rate (kon).
+    QUALITATIVE:
+      - lysate MHC/direct/radioactivity - A radioactivity detection assay that detects direct binding of a cell-lysate-MHC molecule with a ligand.
+      - cellular MHC/competitive/fluorescence - A fluorescence detection assay that detects loss of binding of a known reference ligand to cell-bound-MHC due to competition by the ligand under investigation.
+      - purified MHC/direct/phage display - A phage display binding assay that detects direct binding of a purified-MHC molecule with a ligand.
+      - purified MHC/direct/fluorescence - A fluorescence detection assay that detects direct binding of a purified-MHC molecule with a ligand.
+      - lysate MHC/direct/fluorescence - A fluorescence detection assay that detects direct binding of a cell-lysate-MHC molecule with a ligand.
+      - cellular MHC/direct/fluorescence - A fluorescence detection assay that detects direct binding of a cell-bound-MHC molecule with a ligand.
+      - cellular MHC/direct/radioactivity - A radioactivity detection assay that detects direct binding of a cell-bound-MHC molecule with a ligand.
+      - cellular MHC/competitive/radioactivity - A radioactivity detection assay that detects loss of binding of a known reference ligand to cell-bound-MHC due to competition by the ligand under investigation.
+      - purified MHC/competitive/fluorescence - A fluorescence detection assay that detects loss of binding of a known reference ligand to purified-MHC due to competition by the ligand under investigation.
+      - purified MHC/direct/radioactivity - A radioactivity detection assay that detects direct binding of a purified-MHC molecule with a ligand.
+      - purified MHC/competitive/radioactivity - A radioactivity detection assay that detects loss of binding of a known reference ligand to purified-MHC due to competition by the ligand under investigation.
+      - cellular MHC/T cell inhibition - A cell bound MHC binding assay that uses a T cell epitope recognition assay.
+      - binding assay - An assay that detects the binding of a MHC molecule with a ligand, and produces a qualitative measurement of the binding as an output.
+      - purified MHC - A qualitative binding assay that detects the binding of a purified-MHC molecule with a ligand.
+      - lysate MHC - A qualitative binding assay that detects the binding of a cell-lysate-MHC molecule with a ligand.
+      - cellular MHC - A qualitative binding assay that detects the binding of a cell-bound-MHC molecule with a ligand.
+    IC50:
+      - cellular MHC/competitive/fluorescence - A fluorescence detection assay that measures half maximal inhibitory concentration (IC50) to detect the loss of binding of a known reference ligand to cell-bound-MHC due to competition by the ligand under investigation.
+      - cellular MHC/competitive/radioactivity - A radioactivity detection assay that measures half maximal inhibitory concentration (IC50) to detect the loss of binding of a known reference ligand to cell-bound-MHC due to competition by the ligand under investigation.
+      - purified MHC/competitive/fluorescence - A fluorescence detection assay that measures half maximal inhibitory concentration (IC50) to detect the loss of binding of a known reference ligand to purified-MHC due to competition by the ligand under investigation.
+      - purified MHC/competitive/radioactivity - A radioactivity detection assay that measures half maximal inhibitory concentration (IC50) to detect the loss of binding of a known reference ligand to purified-MHC due to competition by the ligand under investigation.
+      - cellular MHC/T cell inhibition - 'A cell bound MHC ligand binding half maximal inhibitory concentration (IC50) determination assay that uses a T cell epitope recognition assay to measure ligand binding.
+      - binding assay - A MHC binding constant determination assay measuring half maximal inhibitory concentration (IC50).
+    EC50:
+      - cellular MHC/direct/fluorescence - A fluorescence detection assay that measures half maximal effective concentration (EC50) to detect direct binding of a cell-bound-MHC molecule with a ligand.
+      - lysate MHC/direct/radioactivity - A radioactivity detection assay that measures half maximal effective concentration (EC50) to detect the direct binding of a cell-lysate-MHC molecule with a ligand.
+      - purified MHC/direct/fluorescence - A fluorescence detection assay that measures half maximal effective concentration (EC50) to detect direct binding of a purified-MHC molecule with a ligand.
+      - binding assay - A MHC binding constant determination assay measuring half maximal effective concentration (EC50).
+    BINDING_CONSTANT:
+      - binding assay - A MHC:ligand binding assay that measures a binding constant.
+    DISSOC_TEMP:
+      - purified MHC/direct/fluorescence - A fluorescence detection assay that measures the 50% dissociation of binding temperature of a purified-MHC molecule with a ligand.
+  allowed_values:
+    ASSOCIATION_CONSTANT:
+      - cellular MHC/direct/fluorescence
+      - binding assay
+    DISSOCIATION_CONSTANT:
+      - cellular MHC/competitive/fluorescence
+      - cellular MHC/competitive/radioactivity
+      - lysate MHC/competitive/radioactivity
+      - purified MHC/competitive/fluorescence
+      - purified MHC/competitive/radioactivity
+      - binding assay
+    DISSOCIATION_CONSTANT_IC50:
+      - purified MHC/competitive/radioactivity
+      - purified MHC/competitive/fluorescence
+    DISSOCIATION_CONSTANT_EC50:
+      - purified MHC/direct/fluorescence
+    HALFLIFE:
+      - lysate MHC/direct/radioactivity
+      - purified MHC/direct/fluorescence
+      - cellular MHC/direct/fluorescence
+      - cellular MHC/direct/radioactivity
+      - purified MHC/direct/radioactivity
+      - binding assay
+    OFFRATE:
+      - cellular MHC/direct/fluorescence
+      - lysate MHC/direct/radioactivity
+      - purified MHC/direct/fluorescence
+      - binding assay
+    ONRATE:
+      - cellular MHC/direct/fluorescence
+      - purified MHC/direct/fluorescence
+      - binding assay
+    QUALITATIVE:
+      - lysate MHC/direct/radioactivity
+      - cellular MHC/competitive/fluorescence
+      - purified MHC/direct/phage display
+      - purified MHC/direct/fluorescence
+      - lysate MHC/direct/fluorescence
+      - cellular MHC/direct/fluorescence
+      - cellular MHC/direct/radioactivity
+      - cellular MHC/competitive/radioactivity
+      - purified MHC/competitive/fluorescence
+      - purified MHC/direct/radioactivity
+      - purified MHC/competitive/radioactivity
+      - cellular MHC/T cell inhibition
+      - binding assay
+      - purified MHC
+      - lysate MHC
+      - cellular MHC
+    IC50:
+      - cellular MHC/competitive/fluorescence
+      - cellular MHC/competitive/radioactivity
+      - purified MHC/competitive/fluorescence
+      - purified MHC/competitive/radioactivity
+      - cellular MHC/T cell inhibition
+      - binding assay
+    EC50:
+      - cellular MHC/direct/fluorescence
+      - lysate MHC/direct/radioactivity
+      - purified MHC/direct/fluorescence
+      - binding assay
+    BINDING_CONSTANT:
+      - binding assay
+    DISSOC_TEMP:
+      - purified MHC/direct/fluorescence 
