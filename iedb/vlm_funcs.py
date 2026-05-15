@@ -16,7 +16,6 @@ from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 
-
 prompt = """You are an intelligent AI assistant that is an expert in understanding and answering questions 
             about immunology. As an immunology expert, you are given snippets from real immunology papers, 
             and you are tasked to extract specific information from the text and images provided as context."""
@@ -144,7 +143,6 @@ def query_vlm(image_path: str, prompt: str, query: str, qwen2vl_client: OpenAI, 
                 'content': content
         }]
 
-        #print(f"Query given to Qwen2.5VL: {input}")
         try:
             response = qwen2vl_client.chat.completions.create(model=model, messages=input)
             response = response.choices[0].message.content
@@ -189,254 +187,6 @@ def validate_in_list(value: str, allowed_values: List):
         raise ValueError(f"Value {value} not in allowed values: {allowed_values}")
     return value
 
-
-def get_assay_types(assay_object: Dict, qwen2vl_client: OpenAI, model_name: str, captions: Dict, full_text: str,
-                     allowed_responses: List = formatted_queries['assay_response']['allowed_values']):
-    """
-    Given dictionary of assay objects keyed on image path, extracts corresponding assay types.
-    
-    :param assay_object: assays keyed on image path
-    :type assay_object: Dict
-    :param qwen2vl_client: openai client
-    :type qwen2vl_client: OpenAI
-    :param model_name: model to query
-    :type model_name: str
-    :param captions: dictionary mapping image path to captions
-    :type captions: Dict
-    :param full_text: full paper text, used as context
-    :type full_text: str
-    :param allowed_responses: list of valid assay responses used to filter out non-valid responses
-    :type allowed_responses: List
-    :return: Description
-    :rtype: Any
-    """
-    assay_object_w_type = {}
-    for object in assay_object:
-        assay_object_w_type[object] = []
-        for assay in assay_object[object]:
-            if isinstance(assay, str):
-                continue
-            if assay.get('AssayResponse', None) not in allowed_responses:
-                continue
-            content = []
-            content.append({'type': 'text', 'text': f"""Given the following extracted media: """})
-            image_path = object
-            caption = captions[image_path]
-            content += create_multimodal_context_single(image_path, caption)
-            if full_text:
-                content.append({'type': 'text', 'text': f'And with the full context of the paper: {full_text}'})
-            assay_response = assay['AssayResponse']
-            assay_units = assay['Unit']
-            if assay_response is None:
-                continue
-            if assay_response == '3DSTRUCTURE':
-                formatted_query = f"""Given an extracted assay description including response: {assay_response}, 
-                and units: {assay_units},""" + formatted_queries['assay_type_3D']['instruction']
-            else:
-                formatted_query = f"""Given an extracted assay description including response: {assay_response}, 
-                and units: {assay_units},""" + formatted_queries['assay_type']['instruction']
-                allowed_values_description = '\n'.join(formatted_queries['assay_type']['descriptions'][assay_response]) + '\n'
-                allowed_values = f'Choose only from this list according to the descriptions:\n' + '\n'.join(formatted_queries['assay_type']['allowed_values'][assay_response]) + '\n'
-                example_output = """'''Example output'''\n""" + formatted_queries['assay_type']['allowed_values'][assay_response][0] + """\n'''"""
-                formatted_query = formatted_query + allowed_values_description + allowed_values + example_output
-            # Add final formatted query
-            content.append({'type': 'text', 'text': formatted_query})
-            input = [{"role": "system", "content": prompt},
-                    {'role': 'user', 
-                    'content': content
-            }]
-            response, pval = query_qwen_w_logprobs(qwen2vl_client, input, model_name, extra_args={'response_format':{'type' :'json_object'}},
-            parsing_func=validate_response, parsing_func_args={'expected_fields': ['AssayType', 'AssayTypeJustification']})#[0]
-            response = response[0]
-            if isinstance(response, Dict):
-                response['AssayType_logprob'] = pval
-                assay.update(response)
-            else:
-                assay['AssayType'] = response
-            assay_object_w_type[object].append(assay)
-    return assay_object_w_type
-
-def match_up_shortnames(content: Dict, epitopes_object: Dict, shortnames: Dict):
-    """
-    identify peptide mentions using short names.
-    
-    :param content: full content dictionary as initially extracted.
-    :type content: Dict
-    :param epitopes_object:  elsewhere visual_index; keyed on peptides.
-    :type epitopes_object: Dict
-    :param shortnames: dictionary of shortnames keyed on peptide
-    :type shortnames: Dict
-    """
-    for peptide in epitopes_object:
-        if peptide not in shortnames:
-            continue
-        peptide_shortnames = set([p for p in shortnames[peptide] if p != 'None']) 
-        #adding truncated peptide as shortname per Randi's advice
-        peptide_shortnames.add(peptide[:3])
-        if peptide_shortnames == set():
-            continue
-        else:
-            for visual_element in ['Tables', 'Images']:
-                seen_paths = set()
-                for path in epitopes_object[peptide].get(visual_element, []):
-                    seen_paths.add(path['image_path'])
-                for element in content.get(visual_element, []):
-                    if element['image_path'] not in seen_paths:
-                        if 'text' not in element:
-                            text = extract_text(element['image_path'])
-                        else:
-                            text = '\n'.join(element['text'])
-                    
-                        pattern = rf"\b(?:{'|'.join(map(re.escape, peptide_shortnames))})\b"
-                        matches = re.search(pattern, text)
-                        if matches:
-                            print(f'Found new: {peptide_shortnames}')
-                            epitopes_object[peptide][visual_element].append({'image_path': element['image_path'], 'captions': element['captions'],
-                            'footnotes': element['footnotes']})
-    return epitopes_object                    
-           
-
-def match_epitopes_assays(assays_object: Dict, epitopes_object: Dict, mhc_object: Dict, captions, qwen2vl_client, shortnames: Dict, model_name: str = './qwen2.5-vl-32b'):
-    epitope_assay_maps = {}
-    visual_index = align_objects(assays_object, epitopes_object, mhc_object)
-    for element in visual_index:
-        if (len(visual_index[element]['assay']) != 0) & (len(visual_index[element]['epitope']) != 0):
-            content = []
-            content.append({'type': 'text', 'text': f"""You are given following extracted figure or table: """})
-            content += create_multimodal_context_single(element, captions[element])
-            assays = visual_index[element]['assay']
-            epitopes = visual_index[element]['epitope']
-            epitopes = [p + ' (potentially referred to as ' + ' or '.join(shortnames[p]) + ')' if shortnames[p] != {'None'} else p for p in  epitopes]
-            mhc_molecules = visual_index[element]['mhc']
-            if len(mhc_molecules) == 0:
-                mhc_molecules = set().union(*[visual_index[element]['mhc'] for element in visual_index])
-            mhc_molecules = list(mhc_molecules)
-            formatted_query = f"""Within this figure, at least one epitope (a linear protein sequence)'s binding to an \
-            MHC molecule has been measured with at least one assay.
-            Given a list of assays: {assays}\n and a list of epitopes: {epitopes},\n and a list of possible MHC molecules: {mhc_molecules}\n
-            extracted seperately from the same figure, match up the assays and the epitopes and MHC molecules that the assays measure. There
-            can be a many-to-many mapping where the same epitope is reused. Conform to the below output: a list where each element is a successfully
-            matched assay-epitope-mhc triplet, a dictionary with the keys AssayResponse, Unit, AssayType, Epitope, MHC and Justification.
-            ----
-            Output format
-
-            [
-            {{'AssayResponse': 'IC50', 'Unit': 'nM', 'AssayType': 'cell bound MHC – radioactivity competition', 
-            'Epitope': 'DYSLYQSDL',
-            'MHC': 'HLA-A02*01', 'Justification': 'The epitope DYSLYQSDL is shown next to the IC50 value.'}},
-            {{'AssayResponse': '3DSTRUCTURE', 'Unit': 'Å', 'AssayType': 'x-ray crystallography', 'MHC': 'H-2-Kd'}}
-            ]
-            """
-            # Add final formatted query
-            content.append({'type': 'text', 'text': formatted_query})
-            input = [{"role": "system", "content": prompt},
-                    {'role': 'user', 
-                    'content': content
-            }]
-            response = query_qwen(qwen2vl_client, input, model=model_name, extra_args={'response_format':{'type': 'json_object'}},
-            parsing_func=validate_response, parsing_func_args={'expected_fields': ['AssayResponse', 'Unit', 'AssayType', 'MHC', 'Justification']})
-            epitope_assay_maps[element] = response
-    return epitope_assay_maps
-
-
-def identify_peptide_specific_assays_from_context(peptide, peptide_visual_index, shortnames, mhc_visual_index, qwen2vl_client, model: str = "Qwen/Qwen2.5-VL-32B-Instruct",
-    prompt: str = prompt, formatted_query: str = formatted_queries['assay_response']['instruction']):
-    assays = {}
-    all_mhc = set(mhc_visual_index.keys())
-    all_mhc_rev = {}
-    for mhc in all_mhc:
-        for element in ['Tables', 'Images']:
-            for table in all_mhc[mhc].get(element, {}):
-                if table['image_path'] not in all_mhc_rev:
-                    all_mhc_rev[table['image_path']] = []
-                all_mhc_rev[table['image_path']].append(mhc)
-    tables = peptide_visual_index.get('Tables')
-    for table in tables:
-        content = []
-        mhc_alleles = ', '.join(set(all_mhc_rev[i]) if i in all_mhc_rev else all_mhc)
-        content.append({'type': 'text', 'text': f"""Given following extracted table, which has been identified as containing peptide {peptide} (referred to elsewhere as {shortnames})
-        and MHC alleles {mhc_alleles}: """})
-        image_path = table['image_path']
-        caption = " ".join(table['captions']) + "  ".join(table['footnotes'])
-        content += create_multimodal_context_single(image_path, caption)
-        content.append({'type': 'text', 'text': formatted_query})
-        input = [{"role": "system", "content": prompt},
-                {'role': 'user', 
-                'content': content
-        }]
-        assay = query_qwen(qwen2vl_client, input, model, extra_args={'response_format':{"type": "json_object"}},
-        parsing_func=validate_response, parsing_func_args={'expected_fields': ['AssayResponse', 'Unit', 'Justification', 'MHCAllele']})
-        assays[image_path] = assay
-    figures = peptide_visual_index.get('Images')
-    for figure in figures:
-        print(f'Working on {figure["image_path"]}.')
-        content = []
-        mhc_alleles = ', '.join(set(all_mhc_rev[i]) if i in all_mhc_rev else all_mhc)
-        content.append({'type': 'text', 'text': f"""Given following extracted figure, which has been identified as containing peptide {peptide} (referred to elsewhere as {shortnames})
-        and MHC alleles {mhc_alleles}: """})
-        image_path = figure['image_path']
-        caption = figure['captions']
-        content += create_multimodal_context_single(image_path, caption)
-        content.append({'type': 'text', 'text': formatted_query})
-        input = [{"role": "system", "content": prompt},
-                {'role': 'user', 
-                'content': content
-        }]
-        assay = query_qwen(qwen2vl_client, input, model, extra_args={'response_format':{"type": "json_object"}},
-        parsing_func=validate_response, parsing_func_args={'expected_fields': ['AssayResponse', 'Unit', 'Justification', 'MHCAllele']})
-        assays[image_path] = assay
-    return assays
-
-def identify_assays_from_context(visual_index: Dict, qwen2vl_client, model: str = "Qwen/Qwen2.5-VL-32B-Instruct",
-    prompt: str = prompt, formatted_query: str = formatted_queries['assay_response']['instruction']) -> Dict:
-    """
-    Function that queries each visual element for assays.
-    
-    :param visual_index: context object extracted from paper
-    :type visual_index: dict
-    :param qwen2vl_client: openai client
-    :param model: model name to query
-    :type model: str
-    :param prompt: system level prompt
-    :type prompt: str
-    :param formatted_query: user prompt
-    :type formatted_query: str
-    """
-    assays = {}
-    tables = visual_index.get('Tables')
-    for table in tables:
-        print(f'Working on {table["image_path"]}.')
-        content = []
-        content.append({'type': 'text', 'text': f"""Given following extracted table: """})
-        image_path = table['image_path']
-        caption = " ".join(table['captions']) + "  ".join(table['footnotes'])
-        content += create_multimodal_context_single(image_path, caption)
-        content.append({'type': 'text', 'text': formatted_query})
-        input = [{"role": "system", "content": prompt},
-                {'role': 'user', 
-                'content': content
-        }]
-        assay = query_qwen(qwen2vl_client, input, model, extra_args={'response_format':{"type": "json_object"}},
-        parsing_func=validate_response, parsing_func_args={'expected_fields': ['AssayResponse', 'Unit', 'Justification']})
-        assays[image_path] = assay
-    figures = visual_index.get('Images')
-    for figure in figures:
-        print(f'Working on {figure["image_path"]}.')
-        content = []
-        content.append({'type': 'text', 'text': f"""Given following extracted figure: """})
-        image_path = figure['image_path']
-        caption = figure['captions']
-        content += create_multimodal_context_single(image_path, caption)
-        content.append({'type': 'text', 'text': formatted_query})
-        input = [{"role": "system", "content": prompt},
-                {'role': 'user', 
-                'content': content
-        }]
-        assay = query_qwen(qwen2vl_client, input, model, extra_args={'response_format':{"type": "json_object"}},
-        parsing_func=validate_response, parsing_func_args={'expected_fields': ['AssayResponse', 'Unit', 'Justification']})
-        assays[image_path] = assay
-    return assays
-
 def identify_peptides_from_context(visual_index: Dict, qwen2vl_client: OpenAI, prompt: str =prompt,
     query: str =formatted_queries['peptide_query']['instruction'], model: str="Qwen/Qwen2.5-VL-32B-Instruct") -> Dict:
 
@@ -476,7 +226,6 @@ def identify_peptides_from_context(visual_index: Dict, qwen2vl_client: OpenAI, p
         table_image_path = table['image_path']
         captions = table['captions']
         footnotes = table['footnotes']
-        #print(f"Matches from table {i+1}: {matches}\n\n")
 
         for text in table['text']:
             matches = epitope_pattern.findall(text)
@@ -494,11 +243,11 @@ def identify_peptides_from_context(visual_index: Dict, qwen2vl_client: OpenAI, p
 
         matched_sequences = set()
         peptides_vlm = query_vlm(table['image_path'], prompt, query, qwen2vl_client, model)
-        # Don't add 'None' responses from VLM (aka, peptide not found in the figure)
         if peptides_vlm != 'None':
             peptides_vlm = evaluate_expression(peptides_vlm)
             if peptides_vlm is not None:
                 matched_sequences.update(peptides_vlm)
+
         for match in matched_sequences:
             if match not in stopwords and all(c in valid_amino_acids for c in match) and not all(c in "GATC" for c in match):
                 sequence_data.setdefault(match, {"Texts": [], "Tables": [], "Images": []})
@@ -620,7 +369,6 @@ def identify_hla_from_context(visual_index: Dict, qwen2vl_client: OpenAI, prompt
         table_image_path = table['image_path']
         captions = table['captions']
         footnotes = table['footnotes']
-        #print(f"Matches from table {i+1}: {matches}\n\n")
 
         for text in table['text']:
             matches = spot_mhc(text)
@@ -636,7 +384,6 @@ def identify_hla_from_context(visual_index: Dict, qwen2vl_client: OpenAI, prompt
             })
 
         hla = query_vlm(table['image_path'], prompt, hla_query, qwen2vl_client, model)
-        # Don't add 'None' responses from VLM (aka, peptide not found in the figure)
         if hla != 'None':
             hla = evaluate_expression(hla)
             if hla is not None:
@@ -685,14 +432,15 @@ def identify_hla_from_context(visual_index: Dict, qwen2vl_client: OpenAI, prompt
             if hlas is not None:
                 for hla in hlas:
                     valid_matches.append(clean_hla_match(hla))
-                for match in valid_matches:            
-                    sequence_data.setdefault(match, {"Texts": [], "Tables": [], "Images": []})
-                    sequence_data[match]["Images"].append({
-                        "image_path": str(image_path),
-                        "captions": captions,
-                        "footnotes": footnotes,
-                        "mode": 'VLM'
-                    })
+
+        for match in valid_matches:            
+            sequence_data.setdefault(match, {"Texts": [], "Tables": [], "Images": []})
+            sequence_data[match]["Images"].append({
+                "image_path": str(image_path),
+                "captions": captions,
+                "footnotes": footnotes,
+                "mode": 'VLM'
+            })
 
     text = extract_text(image_path)
     matches = spot_mhc(text)
@@ -733,51 +481,6 @@ def identify_hla_from_context(visual_index: Dict, qwen2vl_client: OpenAI, prompt
     return sequence_data
 
 
-def hla_peptide_vlm_query(visual_index: Dict, qwen2vl_client: OpenAI, prompt: str = prompt,
-    hla_query: str = formatted_queries['hla_query']['instruction'], model: str = "Qwen/Qwen2.5-VL-32B-Instruct",
-    filter: bool = False):
-
-    """
-    Function that accepts context file (output from Docling) and returns a dictionary with keys=putative MHC molecules, and
-    values corresponding to images and text in which this MHC molecule appears.
-    
-    :param visual_index: dictionary output containing context extracted from paper
-    :type visual_index: dict
-    :param qwen2vl_client: openai client
-    :type qwen2vl_client: OpenAI
-    :param prompt: system prompt
-    :type prompt: str
-    :param query: user prompt
-    :type query: str
-    :param model: model name to use
-    :type model: str
-    """
-        
-    output = {}
-
-    # --- TABLE SEARCH + SAVE --- (search table elements for peptide sequences)
-    for table in visual_index['Tables']:
-        matched_sequences = set()
-        table_image_path = table['image_path']
-        captions = table['captions']
-        footnotes = table['footnotes']
-
-        hla = query_vlm(table['image_path'], prompt, hla_query, qwen2vl_client, model)
-        output[table['image_path']] = hla
-            
-    for fig_item in visual_index['Images']:
-
-        captions = fig_item['captions']
-        footnotes = fig_item['footnotes']
-        image_path = fig_item['image_path']
-        combined_text = " ".join(captions + footnotes) + ' '
-
-        hlas = query_vlm(image_path, prompt, hla_query, qwen2vl_client, model)
-        output[image_path] = hlas
-
-
-    return output
-
 def get_shortnames(sequence_data: Dict, qwen2vl_client: OpenAI, prompt: str = prompt, model_name: str = './qwen2.5-vl-32b') -> Dict:
 
     """
@@ -794,9 +497,7 @@ def get_shortnames(sequence_data: Dict, qwen2vl_client: OpenAI, prompt: str = pr
     """
 
     for peptide in sequence_data:
-        # Store shortnames found in all of the elements the peptide was found in
         shortnames = []
-        # Check if peptide is found in text
         texts = sequence_data[peptide]['Texts']
         if texts:
             full_text = ''
@@ -1060,47 +761,6 @@ def create_multimodal_context(peptide_sources: Dict, pad_to_64: bool = True):
         # Add the table image to query
         context.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64_str}"}})
 
-        # Add the table caption to query
-        formatted_caption = f'The above image has caption: {caption}'
-        context.append({'type': 'text', 'text': formatted_caption})
-        seen_paths.add(image_path)
-    return context
-
-def create_multimodal_context_padded(peptide_sources: Dict):
-
-    """
-    Multimodal context creation but usng the "resized" version of files.
-    
-    :param peptide_sources: dictionary corresponding to value for a given peptide in peptide object.
-    :type peptide_sources: Dict
-    """
-
-    context = []
-    seen_paths = set()
-    tables = peptide_sources.get('Tables')
-    for table in tables:
-        image_path = table['image_path'].replace('.png', '_resized.png')
-        if image_path in seen_paths:
-            continue
-        img_b64_str = encode_image(image_path)
-        caption = " ".join(table['captions']) + " ".join(table['footnotes'])
-        # Add the table image to query
-        context.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64_str}"}})
-        # Add the table caption to query
-        formatted_caption = f'The above image has caption: {caption}'
-        context.append({'type': 'text', 'text': formatted_caption})
-        seen_paths.add(image_path)
-    # Add figures and their captions to the query
-    figures = peptide_sources.get('Images')
-    for figure in figures:
-        image_path = figure['image_path'].replace('.png', '_resized.png')
-        if image_path in seen_paths:
-            continue
-        print(f"figure added to images: {image_path}")
-        img_b64_str = encode_image(image_path)
-        caption = ' '.join(figure['captions']) + ' '.join(figure['footnotes'])
-        # Add the table image to query
-        context.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64_str}"}})
         # Add the table caption to query
         formatted_caption = f'The above image has caption: {caption}'
         context.append({'type': 'text', 'text': formatted_caption})
